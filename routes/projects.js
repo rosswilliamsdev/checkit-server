@@ -201,24 +201,68 @@ router.put("/:id", (req, res) => {
 });
 
 // DELETE
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", (req, res) => {
   const projectId = req.params.id;
+  const userId = req.user.userId;
 
-  try {
-    // First delete tasks belonging to this project
-    await db.run("DELETE FROM tasks WHERE projectId = ?", [projectId]);
+  db.serialize(() => {
+    db.all(
+      "SELECT id FROM tasks WHERE projectId = ?",
+      [projectId],
+      (err, tasks) => {
+        if (err) {
+          console.error("Error fetching tasks for deletion:", err.message);
+          return res
+            .status(500)
+            .json({ error: "Failed to delete project-related data" });
+        }
 
-    // Then delete the project only if it belongs to the authenticated user
-    await db.run("DELETE FROM projects WHERE id = ? AND userId = ?", [
-      projectId,
-      req.user.userId,
-    ]);
+        const taskIds = tasks.map((task) => task.id);
+        const placeholders = taskIds.map(() => "?").join(", ");
 
-    res.sendStatus(204);
-  } catch (err) {
-    console.error("Error deleting project and tasks:", err);
-    res.status(500).json({ error: "Failed to delete project and tasks" });
-  }
+        if (taskIds.length > 0) {
+          db.run(
+            `DELETE FROM checklist_items WHERE taskId IN (${placeholders})`,
+            taskIds,
+            function (err) {
+              if (err) {
+                console.error("Error deleting checklist items:", err.message);
+                return res
+                  .status(500)
+                  .json({ error: "Failed to delete checklist items" });
+              }
+            }
+          );
+        }
+
+        db.run(
+          "DELETE FROM tasks WHERE projectId = ?",
+          [projectId],
+          function (err) {
+            if (err) {
+              console.error("Error deleting tasks:", err.message);
+              return res.status(500).json({ error: "Failed to delete tasks" });
+            }
+
+            db.run(
+              "DELETE FROM projects WHERE id = ? AND userId = ?",
+              [projectId, userId],
+              function (err) {
+                if (err) {
+                  console.error("Error deleting project:", err.message);
+                  return res
+                    .status(500)
+                    .json({ error: "Failed to delete project" });
+                }
+
+                return res.sendStatus(204);
+              }
+            );
+          }
+        );
+      }
+    );
+  });
 });
 
 module.exports = router;
