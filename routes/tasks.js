@@ -226,7 +226,7 @@ router.put("/tasks/:taskId/status", (req, res) => {
 //DELETE
 router.delete("/:id", (req, res) => {
   const { id } = req.params;
-
+  console.log("Attempting to delete task", id, "for user", req.user.userId);
   const sql = `DELETE FROM tasks WHERE id = ? AND userId = ?`;
 
   db.run(sql, [id, req.user.userId], function (err) {
