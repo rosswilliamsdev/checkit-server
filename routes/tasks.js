@@ -118,7 +118,7 @@ router.put("/:id", (req, res) => {
     dateCreated,
     dateCompleted,
   } = req.body;
-
+  console.log("Attempting to update task", req.body);
   if (!title || typeof title !== "string" || title.trim().length === 0) {
     return res.status(400).json({ error: "Task title is required." });
   }
@@ -184,9 +184,12 @@ router.put("/:id", (req, res) => {
   ];
   db.run(sql, params, function (err) {
     console.log("db running");
+
     if (err) {
       console.error("Error updating task:", err.message);
       res.status(500).json({ error: "Failed to update task" });
+    } else if (this.changes === 0) {
+      return res.status(404).json({ error: "Task not found or unauthorized" });
     } else {
       res.status(200).json({ message: "Task updated", changes: this.changes });
     }
