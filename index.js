@@ -11,7 +11,11 @@ const port = process.env.PORT || 3001;
 
 app.use(
   cors({
-    origin: ["https://checkitplanner.com", "https://www.checkitplanner.com"],
+    origin: [
+      "https://checkitplanner.com",
+      "https://www.checkitplanner.com",
+      "http://localhost:5173",
+    ],
     credentials: true,
   })
 );
