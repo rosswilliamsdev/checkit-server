@@ -11,17 +11,7 @@ const port = process.env.PORT || 3001;
 
 app.use(
   cors({
-    origin: (origin, callback) => {
-      const allowedOrigins = [
-        "https://checkitplanner.com",
-        "https://www.checkitplanner.com",
-      ];
-      if (allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
-      }
-    },
+    origin: ["https://checkitplanner.com", "https://www.checkitplanner.com"],
     credentials: true,
   })
 );
