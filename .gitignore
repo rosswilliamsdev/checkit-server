@@ -36,3 +36,6 @@ client/dist/
 
 # Vite
 .vite/
+
+
+checkit.db

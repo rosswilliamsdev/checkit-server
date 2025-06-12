@@ -6,6 +6,7 @@ const authenticateToken = require("../middleware/auth");
 router.use(authenticateToken);
 
 //helper
+/*
 const getProjectById = (id, userId) => {
   return new Promise((resolve, reject) => {
     db.get(
@@ -58,20 +59,73 @@ const getProjectById = (id, userId) => {
     );
   });
 };
+*/
 
-// GET
-router.get("/", (req, res) => {
-  const userId = req.user.userId;
-  const sql = `SELECT id, title FROM projects WHERE userId = ? ORDER BY dateCreated DESC`;
+const getProjectById = async (id, userId) => {
+  try {
+    const projectResult = await db.query(
+      "SELECT * FROM projects WHERE id = $1 AND userId = $2",
+      [id, userId]
+    );
 
-  db.all(sql, [userId], (err, rows) => {
-    if (err) {
-      console.error("Error fetching projects:", err.message);
-      res.status(500).json({ error: "Failed to fetch projects" });
-    } else {
-      res.json(rows);
+    if (projectResult.rows.length === 0) return null;
+    const project = projectResult.rows[0];
+
+    const tasksResult = await db.query(
+      "SELECT * FROM tasks WHERE projectId = $1",
+      [project.id]
+    );
+    const tasks = tasksResult.rows;
+
+    for (let i = 0; i < tasks.length; i++) {
+      const checklistResult = await db.query(
+        "SELECT * FROM checklist_items WHERE taskId = $1",
+        [tasks[i].id]
+      );
+      tasks[i].checklistItems = checklistResult.rows.map((item) => ({
+        id: item.id,
+        taskId: item.taskid,
+        content: item.content,
+        isDone: item.isdone,
+      }));
     }
-  });
+
+    project.tasks = tasks;
+    return project;
+  } catch (err) {
+    console.error("Error in getProjectById:", err.message);
+    throw err;
+  }
+};
+
+// // GET (SQLite version)
+// router.get("/", (req, res) => {
+//   const userId = req.user.userId;
+//   const sql = `SELECT id, title FROM projects WHERE userId = ? ORDER BY dateCreated DESC`;
+//
+//   db.all(sql, [userId], (err, rows) => {
+//     if (err) {
+//       console.error("Error fetching projects:", err.message);
+//       res.status(500).json({ error: "Failed to fetch projects" });
+//     } else {
+//       res.json(rows);
+//     }
+//   });
+// });
+//
+
+// GET (PostgreSQL version)
+router.get("/", async (req, res) => {
+  const userId = req.user.userId;
+  const sql = `SELECT id, title FROM projects WHERE userId = $1 ORDER BY dateCreated DESC`;
+
+  try {
+    const result = await db.query(sql, [userId]);
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Error fetching projects:", err.message);
+    res.status(500).json({ error: "Failed to fetch projects" });
+  }
 });
 
 router.get("/:id", async (req, res) => {
@@ -89,8 +143,62 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// POST
-router.post("/", (req, res) => {
+// // POST (SQLite version)
+// router.post("/", (req, res) => {
+//   const { title, description, dateCreated, dateCompleted } = req.body;
+//
+//   if (!title || typeof title !== "string" || title.trim().length === 0) {
+//     return res.status(400).json({ error: "Project title is required." });
+//   }
+//   if (title.length > 100) {
+//     return res
+//       .status(400)
+//       .json({ error: "Project title must be under 100 characters." });
+//   }
+//   if (description && description.length > 300) {
+//     return res
+//       .status(400)
+//       .json({ error: "Description must be under 300 characters." });
+//   }
+//   if (dateCreated && isNaN(Date.parse(dateCreated))) {
+//     return res.status(400).json({ error: "Invalid dateCreated format." });
+//   }
+//   if (dateCompleted && isNaN(Date.parse(dateCompleted))) {
+//     return res.status(400).json({ error: "Invalid dateCompleted format." });
+//   }
+//   if (
+//     dateCreated &&
+//     dateCompleted &&
+//     Date.parse(dateCompleted) < Date.parse(dateCreated)
+//   ) {
+//     return res
+//       .status(400)
+//       .json({ error: "dateCompleted cannot be earlier than dateCreated." });
+//   }
+//
+//   const userId = req.user.userId;
+//
+//   const sql = `
+//     INSERT INTO projects (
+//       userId, title, description,
+//       dateCreated, dateCompleted
+//     ) VALUES (?, ?, ?, ?, ?)
+//   `;
+//
+//   const params = [userId, title, description, dateCreated, dateCompleted];
+//
+//   db.run(sql, params, function (err) {
+//     if (err) {
+//       console.error("Error creating project:", err.message);
+//       res.status(500).json({ error: "Failed to create project" });
+//     } else {
+//       res.status(201).json({ id: this.lastID });
+//     }
+//   });
+// });
+
+// POST (PostgreSQL version)
+router.post("/", async (req, res) => {
   const { title, description, dateCreated, dateCompleted } = req.body;
 
   if (!title || typeof title !== "string" || title.trim().length === 0) {
@@ -128,23 +236,80 @@ router.post("/", (req, res) => {
     INSERT INTO projects (
       userId, title, description,
       dateCreated, dateCompleted
-    ) VALUES (?, ?, ?, ?, ?)
+    ) VALUES ($1, $2, $3, $4, $5)
+    RETURNING id
   `;
 
   const params = [userId, title, description, dateCreated, dateCompleted];
 
-  db.run(sql, params, function (err) {
-    if (err) {
-      console.error("Error creating project:", err.message);
-      res.status(500).json({ error: "Failed to create project" });
-    } else {
-      res.status(201).json({ id: this.lastID });
-    }
-  });
+  try {
+    const result = await db.query(sql, params);
+    res.status(201).json({ id: result.rows[0].id });
+  } catch (err) {
+    console.error("Error creating project:", err.message);
+    res.status(500).json({ error: "Failed to create project" });
+  }
 });
 
-// PUT
-router.put("/:id", (req, res) => {
+// // PUT (SQLite version)
+// router.put("/:id", (req, res) => {
+//   const { id } = req.params;
+//   const { title, description, dateCreated, dateCompleted } = req.body;
+//
+//   if (!title || typeof title !== "string" || title.trim().length === 0) {
+//     return res.status(400).json({ error: "Project title is required." });
+//   }
+//   if (title.length > 100) {
+//     return res
+//       .status(400)
+//       .json({ error: "Project title must be under 100 characters." });
+//   }
+//   if (description && description.length > 300) {
+//     return res
+//       .status(400)
+//       .json({ error: "Description must be under 300 characters." });
+//   }
+//   if (dateCreated && isNaN(Date.parse(dateCreated))) {
+//     return res.status(400).json({ error: "Invalid dateCreated format." });
+//   }
+//   if (dateCompleted && isNaN(Date.parse(dateCompleted))) {
+//     return res.status(400).json({ error: "Invalid dateCompleted format." });
+//   }
+//   if (
+//     dateCreated &&
+//     dateCompleted &&
+//     Date.parse(dateCompleted) < Date.parse(dateCreated)
+//   ) {
+//     return res
+//       .status(400)
+//       .json({ error: "dateCompleted cannot be earlier than dateCreated." });
+//   }
+//
+//   const userId = req.user.userId;
+//
+//   const sql = `
+//     UPDATE projects SET
+//       userId = ?, title = ?, description = ?,
+//       dateCreated = ?, dateCompleted = ?
+//     WHERE id = ?
+//   `;
+//
+//   const params = [userId, title, description, dateCreated, dateCompleted, id];
+//
+//   db.run(sql, params, function (err) {
+//     if (err) {
+//       console.error("Error updating project:", err.message);
+//       res.status(500).json({ error: "Failed to update project" });
+//     } else {
+//       res
+//         .status(200)
+//         .json({ message: "Project updated", changes: this.changes });
+//     }
+//   });
+// });
+
+// PUT (PostgreSQL version)
+router.put("/:id", async (req, res) => {
   const { id } = req.params;
   const { title, description, dateCreated, dateCompleted } = req.body;
 
@@ -181,88 +346,56 @@ router.put("/:id", (req, res) => {
 
   const sql = `
     UPDATE projects SET
-      userId = ?, title = ?, description = ?,
-      dateCreated = ?, dateCompleted = ?
-    WHERE id = ?
+      userId = $1, title = $2, description = $3,
+      dateCreated = $4, dateCompleted = $5
+    WHERE id = $6
   `;
 
   const params = [userId, title, description, dateCreated, dateCompleted, id];
 
-  db.run(sql, params, function (err) {
-    if (err) {
-      console.error("Error updating project:", err.message);
-      res.status(500).json({ error: "Failed to update project" });
-    } else {
-      res
-        .status(200)
-        .json({ message: "Project updated", changes: this.changes });
-    }
-  });
+  try {
+    const result = await db.query(sql, params);
+    res
+      .status(200)
+      .json({ message: "Project updated", changes: result.rowCount });
+  } catch (err) {
+    console.error("Error updating project:", err.message);
+    res.status(500).json({ error: "Failed to update project" });
+  }
 });
 
-// DELETE
-router.delete("/:id", (req, res) => {
+// DELETE (PostgreSQL version)
+router.delete("/:id", async (req, res) => {
   const projectId = req.params.id;
   const userId = req.user.userId;
 
-  db.serialize(() => {
-    db.all(
-      "SELECT id FROM tasks WHERE projectId = ?",
-      [projectId],
-      (err, tasks) => {
-        if (err) {
-          console.error("Error fetching tasks for deletion:", err.message);
-          return res
-            .status(500)
-            .json({ error: "Failed to delete project-related data" });
-        }
-
-        const taskIds = tasks.map((task) => task.id);
-        const placeholders = taskIds.map(() => "?").join(", ");
-
-        if (taskIds.length > 0) {
-          db.run(
-            `DELETE FROM checklist_items WHERE taskId IN (${placeholders})`,
-            taskIds,
-            function (err) {
-              if (err) {
-                console.error("Error deleting checklist items:", err.message);
-                return res
-                  .status(500)
-                  .json({ error: "Failed to delete checklist items" });
-              }
-            }
-          );
-        }
-
-        db.run(
-          "DELETE FROM tasks WHERE projectId = ?",
-          [projectId],
-          function (err) {
-            if (err) {
-              console.error("Error deleting tasks:", err.message);
-              return res.status(500).json({ error: "Failed to delete tasks" });
-            }
-
-            db.run(
-              "DELETE FROM projects WHERE id = ? AND userId = ?",
-              [projectId, userId],
-              function (err) {
-                if (err) {
-                  console.error("Error deleting project:", err.message);
-                  return res
-                    .status(500)
-                    .json({ error: "Failed to delete project" });
-                }
-
-                return res.sendStatus(204);
-              }
-            );
-          }
-        );
-      }
+  try {
+    const taskResult = await db.query(
+      "SELECT id FROM tasks WHERE projectId = $1",
+      [projectId]
     );
-  });
+    const taskIds = taskResult.rows.map((task) => task.id);
+
+    if (taskIds.length > 0) {
+      const placeholders = taskIds.map((_, i) => `$${i + 1}`).join(", ");
+      await db.query(
+        `DELETE FROM checklist_items WHERE taskId IN (${placeholders})`,
+        taskIds
+      );
+    }
+
+    await db.query("DELETE FROM tasks WHERE projectId = $1", [projectId]);
+
+    await db.query("DELETE FROM projects WHERE id = $1 AND userId = $2", [
+      projectId,
+      userId,
+    ]);
+
+    return res.sendStatus(204);
+  } catch (err) {
+    console.error("Error deleting project and related data:", err.message);
+    res.status(500).json({ error: "Failed to delete project" });
+  }
 });
 
 module.exports = router;

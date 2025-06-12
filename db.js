@@ -1,5 +1,6 @@
-const sqlite3 = require("sqlite3").verbose();
+// const sqlite3 = require("sqlite3").verbose();
 
+/*
 // Connect to the database, called checkit.db
 const db = new sqlite3.Database("./checkit.db", (err) => {
   if (err) {
@@ -50,5 +51,34 @@ const db = new sqlite3.Database("./checkit.db", (err) => {
       )`);
   });
 });
+*/
 
-module.exports = db;
+// PostgreSQL connection setup
+const { Pool } = require("pg");
+const dotenv = require("dotenv");
+const path = require("path");
+
+// Load the correct .env file based on NODE_ENV
+const env = process.env.NODE_ENV || "development";
+dotenv.config({ path: path.resolve(__dirname, `.env.${env}`) });
+
+let pool;
+
+if (process.env.DATABASE_URL) {
+  // For production: use single connection string (Render)
+  pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false },
+  });
+} else {
+  // For development: use individual PG_* vars
+  pool = new Pool({
+    user: process.env.PG_USER,
+    host: process.env.PG_HOST,
+    database: process.env.PG_DATABASE,
+    password: process.env.PG_PASSWORD,
+    port: process.env.PG_PORT,
+  });
+}
+
+module.exports = pool;
